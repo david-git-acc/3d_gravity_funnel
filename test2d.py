@@ -3,7 +3,7 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 
 x = np.array([-6]).astype("float64")
-v = np.array([3]).astype("float64")
+v = np.array([7]).astype("float64")
 bound = 10
 
 a=0.25
@@ -14,7 +14,7 @@ y = lambda x : np.log(a+x**2)
 y_initial = y(x)
 dy_dx = lambda x : 2*x / (a+x**2)
 dt=0.01
-fps=30
+fps=int(1/dt)
 res=75
 
 X = np.linspace(-bound,bound,res)
@@ -32,10 +32,7 @@ def animate(t):
     parallel_force = m*g*np.sin(theta) 
     sign = np.sign(v)
     
-    positive = sign > 0
-    
     parallel_force += sign * friction
-    
     
     horizontal = parallel_force*np.cos(theta)
     
@@ -43,8 +40,6 @@ def animate(t):
     
     v += -a*dt
     x += v*dt
-    
-    print(a, v)
     
     new_positions = y(x)
     
@@ -56,8 +51,9 @@ def animate(t):
 
     
     
-anim = FuncAnimation(fig, animate, frames=5000, interval = 1000 / fps)
+anim = FuncAnimation(fig, animate, frames=500, interval = 500 / fps)
 
-plt.show()    
+plt.show()
+#anim.save("2dcliptest.mp4", fps=fps)    
     
 
