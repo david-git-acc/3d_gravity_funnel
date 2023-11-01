@@ -3,13 +3,15 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 from numpy.ma import masked_where
 
-position = 0.75*np.array([2+3j, 3+3.8j, 2+2j])
-velocity = 4* np.array([1.25-1.25j,1.5-1j, 0.5-1.9j])
-colours = ["yellow","green","blue"] # original choice was ["yellow","violet","red"]
+position = 0.75*np.array([2+3j, 3-3.8j, 1-1j, 3+3j])
+velocity = 4* np.array([1-1.25j,-1-0.75j, -0.9+1.1j, 0.76+1.2j])
+colours = ["yellow","green","blue", "black"] # original choice was ["yellow","violet","red"]
 collidedwithwallalready = np.array([False] * len(position))
 collidedtogetheralready = np.array([])
 boundary_collision_markers = np.array([])
 ball_collision_markers = np.array([])
+sizes = 3*np.array([32, 70, 42, 42]) # 50
+radii = np.sqrt(sizes) * 0.01
 cmap = plt.get_cmap("gnuplot")
 
 point_info = {
@@ -19,16 +21,18 @@ point_info = {
     "label" : ["Ball collision points", "Boundary collision points"]
 }
 
-m = 1   
-u = 0.025
+m = np.copy(sizes)
+u = 0.05
 g = 9.81
 a = 0.5
-e=0.5
+e = 0.8
 xy_bound = 5
 res = 100
 px = 1/96
 
-dt=0.01
+
+figsize = (1280*px, 1080*px)
+dt=0.012
 fps=int( 1/dt )
 
 z = lambda x,y : np.log(a + x**2 + y**2)
@@ -37,8 +41,7 @@ dz_dy = lambda x,y : 2*y / (a + x**2 + y**2)
 
 primecomposition = lambda a,b : np.log(b) / np.log(2) + a
 
-#figsize = (1280*px, 720*px)
-fig, ax = plt.subplots(  subplot_kw={"projection" : "3d", "computed_zorder" : False})
+fig, ax = plt.subplots( figsize = figsize, subplot_kw={"projection" : "3d", "computed_zorder" : False})
 
 x = np.linspace(-xy_bound,xy_bound, res)
 y = -np.linspace(-xy_bound,xy_bound, res)
@@ -56,8 +59,8 @@ def calculate_motion():
     zy_gradient = dz_dy(xs,ys)
        
     gradient_vector = np.array([zx_gradient, zy_gradient, np.ones_like(zx_gradient)])
-    norm = np.sqrt(zx_gradient ** 2 + zy_gradient **2 + 1)
-
+    norm = np.linalg.norm(gradient_vector,axis=0)
+    
     gradient_vector *= m*g / norm    
     velocity_direction_x = np.sign(velocity.real)
     velocity_direction_y = np.sign(velocity.imag)
@@ -84,11 +87,9 @@ def calculate_wallphysics():
     
     global position, velocity, collidedwithwallalready, boundary_collision_scatters, boundary_collision_markers
     
-    xs,ys = position.real,position.imag
     u_x,u_y = velocity.real, velocity.imag
     
-    collided_with_wall = xs ** 2 + ys ** 2 >= xy_bound ** 2
-
+    collided_with_wall = np.absolute(position) >= xy_bound
 
     collidedwithwallalready[collidedwithwallalready & ~collided_with_wall] = False
     just_collided = collided_with_wall & ~collidedwithwallalready
@@ -128,53 +129,53 @@ def calculate_wallphysics():
     
     collidedwithwallalready[just_collided] = True
     
-def find_duplicates(records_array, decimals):
-    
-    records_array = np.round(records_array * decimals) / decimals
-
-    # creates an array of indices, sorted by unique element
-    idx_sort = np.argsort(records_array)
-
-    # sorts records array so all unique elements are together 
-    sorted_records_array = records_array[idx_sort]
-
-    # returns the unique values, the index of the first occurrence of a value, and the count for each element
-    vals, idx_start, count = np.unique(sorted_records_array, return_counts=True, return_index=True)
-
-    # splits the indices into separate arrays
-    res = np.split(idx_sort, idx_start[1:])
-
-    #filter them with respect to their size, keeping only items occurring more than once
-    vals = vals[count > 1]
-    res = filter(lambda x: x.size > 1, res)
-
-    return np.array([x[0:2] for x in res])
-    
-def collision(i,j):
+def collision(A,B):
     global velocity
 
-    u1 = velocity[i]
+    u1 = velocity[A]
     u_1x, u_1y = u1.real, u1.imag
+    m1 = m[A]
     
-    u2 = velocity[j]
+    u2 = velocity[B]
     u_2x, u_2y = u2.real, u2.imag
+    m2 = m[B]
+    
+    v_1x = ( u_1x * (m1-e*m2) + m2*u_2x*(1+e) ) / (m1 + m2)
+    v_2x = (m1*u_1x + m2*u_2x - m1*v_1x) / m2
+    
+    v_1y = ( u_1y * (m1-e*m2) + m2*u_2y*(1+e) ) / (m1 + m2)
+    v_2y = (m1*u_1y + m2*u_2y - m1*v_1y) / m2
 
-    v_1x = e * (u_1x - u_2x)
-    v_2x = e * (u_2x - u_1x)
-    
-    v_1y = e * (u_1y - u_2y)
-    v_2y = e * (u_2y - u_1y)
-    
     v_1 = v_1x + v_1y * 1j
     v_2 = v_2x + v_2y * 1j
     
-    velocity[i] = v_1
-    velocity[j] = v_2    
+    velocity[A] = v_1
+    velocity[B] = v_2    
     
-def check_collisions():
+def find_ball_collisions():
+    
+    zs = z(position.real, position.imag)
+    
+    object_position_A, object_position_B = np.meshgrid(position , position)
+    radiusA, radiusB = np.meshgrid(radii, radii)
+    z_A, z_B = np.meshgrid(zs, zs)
+    
+    sum_radii = radiusA + radiusB
+    xy_diff = object_position_A - object_position_B
+    z_diff = z_A - z_B 
+    
+    distances = np.linalg.norm([xy_diff.real,xy_diff.imag,z_diff],axis=0)
+
+    collisions = np.argwhere( distances <= sum_radii )
+    collisions = collisions[collisions[:,0] < collisions[:,1]]
+    
+    return collisions
+    
+    
+def calculate_collisions():
     global velocity, collidedtogetheralready, ball_collision_markers, ball_collision_scatters
         
-    collisions = find_duplicates(position, 1.5)
+    collisions = find_ball_collisions()
 
     if collisions.size:
         
@@ -212,8 +213,10 @@ def check_collisions():
         if unique_collisions.size:
             
             ball_collision_scatters.remove()
+            
+            collision_points = (position[unique_collisions[:,0]] + position[unique_collisions[:,1]])/2
         
-            ball_collision_markers = np.append(ball_collision_markers, position[unique_collisions[:,0]])
+            ball_collision_markers = np.append(ball_collision_markers, collision_points)
             
             collisions_x, collisions_y = ball_collision_markers.real, ball_collision_markers.imag
             
@@ -222,7 +225,7 @@ def check_collisions():
                                                  s=point_info["size"][0],
                                                  marker=point_info["marker"][0],
                                                  label=point_info["label"][0])
-        
+            
     else:
         if collidedtogetheralready.size:
             collidedtogetheralready = np.array([])
@@ -254,11 +257,11 @@ ax.set_xlim([-xy_bound, xy_bound])
 ax.set_ylim(-xy_bound,xy_bound) 
 ax.set_axis_off()
 
-ax.set_title(f"3D simulation")
+ax.set_title(f"3D gravity funnel simulation",fontsize=20)
 
 create_cylinder()
 
-ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap)
+ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap, rcount = 400, ccount = 400 ) 
 
 scattering = ax.scatter([],[],[], s=50, c="green", zorder=10)
 boundary_collision_scatters = ax.scatter([],[],[],                                                 
@@ -273,18 +276,15 @@ ball_collision_scatters = ax.scatter([],[],[],
                                     label=point_info["label"][0])
 
 
+info = ax.scatter([],[],[], marker="$?$", c="blue", label=f"μ = {u}, e = {e}")
 
 def animate(t):
-    global position, velocity, scattering, collidedwithwallalready, boundary_collision_scatters
+    global position, velocity, scattering, collidedwithwallalready
     
     calculate_motion()
-    
-    check_collisions()
-    
+    calculate_collisions()
     calculate_wallphysics()
 
-    
-    
     new_xs = position.real
     new_ys = position.imag
     
@@ -294,7 +294,7 @@ def animate(t):
     ax.set_zlim(Z.min()-0.5, Z.max() + 1 )
     
     new_zs= z(new_xs,new_ys)
-    scattering = ax.scatter(new_xs,new_ys,new_zs + 0.0, s=50, c=colours, zorder=10)
+    scattering = ax.scatter(new_xs,new_ys,new_zs + 0.0, s=sizes, c=colours, zorder=10)
     
     
     ax.view_init(elev=30, azim=t * 10/fps)
@@ -302,10 +302,10 @@ def animate(t):
     handles, labels = ax.get_legend_handles_labels()
     # sort both labels and handles by labels
     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-    ax.legend(handles, labels)
+    ax.legend(handles, labels, loc="upper left")
     
     
-anim = FuncAnimation(fig, animate, interval = 1000/fps , frames=12*fps)
+anim = FuncAnimation(fig, animate, interval = 1000/fps , frames=24*fps)
 
 #plt.show()
-anim.save("3dcliptest4.mp4" , fps=fps)
+anim.save("3dcliptest6.mp4", bitrate=4000, fps=fps)
