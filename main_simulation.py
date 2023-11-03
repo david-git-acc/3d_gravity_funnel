@@ -23,11 +23,11 @@ from plot_functions import wall_marker_update, ball_marker_update, create_cylind
 #
 # 3. There are no forces acting on the balls other than weight and friction, which is a constant multiple of the normal reaction
 #
-# 4. Energy can only be lost through friction or collisions via the coefficient of restitution, e
+# 4. System energy can only be lost through friction or collisions via the coefficient of restitution, e
 #
 # 5. The balls have equal density - the greater the volume of the ball, the heavier the ball
 #
-# 6. Gravity/weight of the balls will acts act in the direction of steepest gradient descent
+# 6. Gravity/weight of the balls will act in the direction of steepest gradient descent
 #
 # 7. Collisions between balls can occur, but only between pairs of balls at any given timeframe 
 #   (the smaller the timestep, the less this becomes an issue since 3-ball collisions are much rarer than 2-ball ones)
@@ -100,7 +100,7 @@ ax.set_title(f"3D gravity funnel simulation",fontsize=20)
 create_cylinder(X,Y,Z)
 
 # Plot the surface of the funnel using our coordinate grids
-ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap ) # rcount = 400, ccount = 400 
+ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap, rcount = 400, ccount = 400  ) # rcount = 400, ccount = 400 
 
 # Initialise the 3 scatter plots - we don't need to plot anything yet
 balls = ax.scatter([],[],[], s=50, c="green", zorder=10)
@@ -173,5 +173,5 @@ def simulate(t):
 # Create the simulation for 24 seconds
 simulation = FuncAnimation(fig, simulate, interval = 1000/fps , frames=24*fps)
 
-plt.show()
-#simulation.save("clips/3dcliptest6.mp4", bitrate=4000, fps=fps)
+#plt.show()
+simulation.save("clips/3dcliptest7.mp4", bitrate=4000, fps=fps)

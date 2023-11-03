@@ -15,7 +15,7 @@ e = 0.8
 
 # Size of the time step. As dt -> 0, the more accurate and stable the simulation (as real time is continuous)
 # A large dt will produce noticeably discrete movements and decrease simulation stability
-dt=0.1
+dt=0.01
 
 # The sizes of the balls - the balls will be visualised as scatter points for efficiency of both design and performance
 ball_sizes = 3*np.array([32, 70, 42, 42]) # 50
