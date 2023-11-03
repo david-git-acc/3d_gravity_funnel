@@ -1,5 +1,7 @@
 import numpy as np
 
+# STORING ALL THE PHYSICS CONSTANTS HERE for easy access and modification
+
 # Mew (u since you can't type greek characters) is the coefficient of friction
 # 0 <= u <= 1, u = 0 -> no friction, u = 1 -> extreme friction
 u = 0.05

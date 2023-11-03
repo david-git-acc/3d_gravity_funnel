@@ -1,6 +1,4 @@
-import numpy as np
-from numpy.ma import masked_where
-import matplotlib.pyplot as plt
+# STORING ALL THE CONSTANTS RELATED TO THE PLOT
 
 # Ratio between inches and pixels for a 1920x1080 screen
 px = 1/96
