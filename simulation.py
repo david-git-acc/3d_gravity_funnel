@@ -3,8 +3,8 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 from numpy.ma import masked_where
 from physics_constants import u,e,dt, ball_sizes
-from physics_functions import z, calculate_motion, calculate_ball_collisions, calculate_wallphysics
-from plot_constants import figsize,res,xy_bound, colours
+from physics_functions import z, calculate_motion, calculate_ball_collisions, calculate_wall_collisions
+from plot_constants import figsize,res,xy_bound, colours, rccount
 from plot_functions import wall_marker_update, ball_marker_update, create_cylinder
 
 # The purpose of this program is to create a 3D simulation of balls travelling along a funnel surface
@@ -44,9 +44,12 @@ position = 0.75*np.array([2+3j, 3-3.8j, 1-1j, 3+3j])
 # This array stores the velocities of the balls - the values here are their initial velocities
 velocity = 4* np.array([1-1.25j,-1-0.75j, -0.9+1.1j, 0.76+1.2j])
 
+# Stores frictional magnitudes at each step
+friction = np.zeros(position.size).real
+
 # Array to check each ball to see if it's currently in collision with a wall
 # Needed to avoid triggering the wall collision code more than once for a single collision
-collidedwithwallalready = np.array([False] * len(position))
+collidedwithwallalready = np.array([False for _ in range(len(position))])
 
 # Array that stores the array indices of balls which have collided with each other
 # Each element is of the form [a b] where a,b are the indices of the colliding balls
@@ -60,6 +63,9 @@ boundary_collision_markers = np.array([])
 # This array stores the positions in xy coordinates, of where balls have collided with each other
 # also over the course of the entire simulation
 ball_collision_markers = np.array([])
+
+# Need to keep track of the balls that collided this exact frame
+collided_this_frame = np.copy(collidedwithwallalready)
 
 # The colour map we'll use for the 3D surface to show higher and lower altitude points more clearly
 cmap = plt.get_cmap("gnuplot")
@@ -93,14 +99,14 @@ ax.set_ylim(-xy_bound,xy_bound)
 # Disable the axes - they are not relevant to the simulation
 ax.set_axis_off()
 
-ax.set_title(f"3D gravity funnel simulation",fontsize=20)
+ax.set_title(f"3D gravity funnel simulation",fontsize=25)
 
 # Create the cylinder that wraps around the 3D funnel - this represents the edges of the simulation
 # I made it a cylinder because that's the shape of the black hole simulation in the Space Centre at Leicester
 create_cylinder(X,Y,Z)
 
 # Plot the surface of the funnel using our coordinate grids
-ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap, rcount = 400, ccount = 400  ) # rcount = 400, ccount = 400 
+ax.plot_surface(X,Y,Z, alpha=0.65,cmap=cmap, rcount = rccount, ccount = rccount )
 
 # Initialise the 3 scatter plots - we don't need to plot anything yet
 balls = ax.scatter([],[],[], s=50, c="green", zorder=10)
@@ -114,16 +120,16 @@ info = ax.scatter([],[],[], marker="$?$", c="blue", label=f"μ = {u}, e = {e}")
 # I decided to modularise my code and place all the physics functions in other programs to reduce clutter and huge files
 def simulate(t):
     # Declaring all of our global variables - these variables will need to be modified and assigned to by every frame
-    global position, velocity, balls, collidedwithwallalready, ball_collision_markers, ball_collision_scatters, balls_collided_already, boundary_collision_markers, boundary_collision_scatters
+    global position, velocity, friction, balls, collided_this_frame, collidedwithwallalready, ball_collision_markers, ball_collision_scatters, balls_collided_already, boundary_collision_markers, boundary_collision_scatters
     
     # Determine the changes in displacement and velocity for the balls
-    calculate_motion(position, velocity)
+    friction += (calculate_motion(position, velocity) - friction)
     
     # Update the array of balls that have collided, the markers showing where they collided, and whether new collisions
     # have occurred. If collisions do occur, then this function will enact them as well.
     (balls_collided_already,
      ball_collision_markers, 
-     update_ball_markers) = calculate_ball_collisions(position, velocity, balls_collided_already, ball_collision_markers)
+     update_ball_markers) = calculate_ball_collisions(position, velocity, collided_this_frame, balls_collided_already, ball_collision_markers)
     
     # If there's a new collision, we need to update the markers to show where they've occurred.
     if update_ball_markers:
@@ -135,7 +141,10 @@ def simulate(t):
     # collided, and whether new collisions have occurred. If collisions do occur, then this function will enact them as well.
     (collidedwithwallalready,
      boundary_collision_markers, 
-     update_wall_markers) = calculate_wallphysics(position, velocity, collidedwithwallalready, boundary_collision_markers, xy_bound)    
+     update_wall_markers) = calculate_wall_collisions(position, velocity, 
+                                                      collidedwithwallalready, 
+                                                      boundary_collision_markers, 
+                                                      xy_bound)    
     
     # If there's a new collsiion, we need to update the markers to show where they've occurred.
     if update_wall_markers:
@@ -144,8 +153,10 @@ def simulate(t):
         boundary_collision_scatters = wall_marker_update(boundary_collision_markers)
         
     # Get the new x and y coordinates of the balls after updating their positions
-    new_xs = position.real
-    new_ys = position.imag
+    new_xs, new_ys = position.real, position.imag
+    
+    # Calculate the new z positions of the balls - these are the vertical positions of the balls on the surface
+    new_zs= z(new_xs,new_ys)
     
     # Remove the current scatter plot of the balls so we can draw them again 
     balls.remove()
@@ -154,10 +165,8 @@ def simulate(t):
     # lower than the actual bottom of the cylinder so it would appear taller, and hence more similar to the simulation.
     ax.set_zlim(Z.min()-0.5, Z.max() + 1 )
     
-    # Calculate the new z positions of the balls - these are the vertical positions of the balls on the surface
     # Since one of the assumptions we make is that the balls will never leave the surface once placed
-    new_zs= z(new_xs,new_ys)
-    balls = ax.scatter(new_xs,new_ys,new_zs + 0.0, s=ball_sizes, c=colours, zorder=10)
+    balls = ax.scatter(new_xs,new_ys,new_zs, s=ball_sizes, c=colours, zorder=10)
     
     # This slowly rotates the view of the plot to give different perspectives
     # I found a good rotation speed at 10 fps, so I multiplied the rate by 10/fps to maintain it regardless of fps
@@ -171,7 +180,7 @@ def simulate(t):
     ax.legend(handles, labels, loc="upper left")
     
 # Create the simulation for 24 seconds
-simulation = FuncAnimation(fig, simulate, interval = 1000/fps , frames=24*fps)
+#simulation = FuncAnimation(fig, simulate, interval = 1000/fps , frames=24*fps)
 
 #plt.show()
-simulation.save("clips/3dcliptest7.mp4", bitrate=4000, fps=fps)
+#simulation.save("clips/3dcliptest7.mp4", bitrate=4000, fps=fps)

@@ -24,4 +24,5 @@ ball_sizes = 3*np.array([32, 70, 42, 42]) # 50
 radii = np.sqrt(ball_sizes) * 0.012
 
 # The masses of the balls will be directly proportional to their sizes - same density
-m = np.copy(ball_sizes)
+# Select some appropriate scalar to divide by to get realistic masses
+m = np.copy(ball_sizes) / 500

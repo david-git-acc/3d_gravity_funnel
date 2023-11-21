@@ -1,16 +1,30 @@
 import numpy as np
 from physics_constants import u,g,e,m,dt,radii
-from plot_constants import a
+from plot_constants import A
 
 # STORING ALL THE PHYSICS BASED FUNCTIONS HERE
 # These are the functions responsible for all physical events in the simulation
 
 # This is our 3D function that will plot the actual funnel surface - it's cone shaped, centred on (0,0)
-z = lambda x,y : np.log(a + x**2 + y**2)
+z = lambda x,y : np.log(A + x**2 + y**2)
+
+# Minimum value of z - used for GPE calculations
+z_min = z(0,0)
 
 # These are the partial derivatives of z with respect to x and y; necessary for computing slope and forces acting on the balls
-dz_dx = lambda x,y : 2*x / (a + x**2 + y**2)
-dz_dy = lambda x,y : 2*y / (a + x**2 + y**2)
+dz_dx = lambda x,y : 2*x / (A + x**2 + y**2)
+dz_dy = lambda x,y : 2*y / (A + x**2 + y**2)
+
+# norm([a,b,c,d,...]) = sqrt(a^2 + b^2 + ... )
+
+# Formula for kinetic energy
+kinetic_energy = lambda m,v : 0.5 * m * np.linalg.norm(v,axis=0)**2
+
+# Formula for gravitational potential energy
+gp_energy = lambda h, h_0 : m * g * ( h - h_0 )
+
+# Calculate euclidean distance
+euclidean = lambda a,b : np.linalg.norm( [a.real - b.real, a.imag - b.imag, z(a.real,a.imag) - z(b.real, b.imag)], axis=0 )
 
 # This function maps a pair of numbers into a single number in a bijective way, using the base2 logarithm of prime composition
 # Needed for checking for numpy array membership - the standard np.isin() only works as intended on 1D arrays
@@ -52,12 +66,15 @@ def calculate_motion(position, velocity):
     # real part = x-axis direction, imaginary part = y-axis direciton
     parallel_forces = gradient_vector[0] + 1j*gradient_vector[1]
     
+    # Calculate the magnitude of friction - used in the plots
+    frictional_magnitude = -u * gradient_vector[2]
+    
     # Frictional forces are the same in both x-axis and y-axis, friction = u * F
     # Negativised because it acts in the OPPOSITE direction to motion
-    frictional_forces = -u * gradient_vector[2] * ( velocity_direction_x + 1j*velocity_direction_y )  
+    frictional_forces = frictional_magnitude * ( velocity_direction_x + 1j*velocity_direction_y )  
 
     # The resultant force = parallel forces - frictional forces 
-    parallel_forces -= frictional_forces    
+    parallel_forces -= frictional_forces  
     
     # We have the resultant PARALLEL to motion forces, but we need the HORIZONTAL components of these forces since 
     # the modelling assumption stated we'd only be moving horizontally - the vertical could be determined by z(x,y)
@@ -77,6 +94,8 @@ def calculate_motion(position, velocity):
     # Ditto as above, v = dx/dt ==> dx = v*dt
     position += velocity*dt
     
+    return frictional_magnitude
+    
 # The function to identify collisions between balls. Returns a vertical array containing the position indices
 # of the colliding balls. Only pairs of balls may collide at a time; any collision points only consider the first 2 to collide
 def find_ball_collisions(position):
@@ -87,6 +106,7 @@ def find_ball_collisions(position):
     # These meshgrids will allow us to get all pairs of balls (ball A, ball B), their positions and their radii
     ball_position_A, ball_position_B = np.meshgrid(position , position)
     radiusA, radiusB = np.meshgrid(radii, radii)
+    
     # Because the vertical component is not included, we need to create a separate meshgrid instance for this
     z_A, z_B = np.meshgrid(zs, zs)
     
@@ -149,7 +169,7 @@ def collision(velocity, A,B):
 # Hence another collision will be registered, and another and so on until they are out of range - the smaller dt, the more 
 # false collisions are registered.
 # The function is called per frame.
-def calculate_ball_collisions(position, velocity, balls_collided_already, ball_collision_markers):
+def calculate_ball_collisions(position, velocity, collided_this_frame, balls_collided_already, ball_collision_markers):
     
     # Determine whether we need to update our collision markers on our plot - this is only True if new collisions occur
     update_markers = False    
@@ -159,7 +179,7 @@ def calculate_ball_collisions(position, velocity, balls_collided_already, ball_c
 
     # If any collisions have occurred:
     if collisions.size:
-        
+
         # Get the balls which have been registered as having collided from find_ball_collisions()
         # Remember that only pairs of balls can collide - disregard any past [:, 1]
         colliding_object_As = collisions[:,0]
@@ -213,6 +233,17 @@ def calculate_ball_collisions(position, velocity, balls_collided_already, ball_c
         # If any unique collisions HAVE occurred, we'll need to update the markers for the collisions
         if unique_collisions.size:
             
+            if len(collisions) == 1:
+                colliding_indices = unique_collisions
+            else:
+                colliding_indices = unique_collisions[0]
+                
+            not_colliding = np.indices(position.shape)
+            not_colliding = not_colliding[~np.isin( not_colliding, colliding_indices)]
+            
+            collided_this_frame[~colliding_indices] = False
+            collided_this_frame[colliding_indices] = True
+            
             # Show that we need to update the markers
             update_markers = True
              
@@ -227,10 +258,12 @@ def calculate_ball_collisions(position, velocity, balls_collided_already, ball_c
         # If no collisions, then clear the collided_already array since no 
         if balls_collided_already.size:
             balls_collided_already = np.array([])
+            
+        collided_this_frame[collided_this_frame] = False
     
     # Because Python doesn't have pointers I can't perform array assignments to memory addresses
     # This means I have to return these arrays and assign them in the main_simulation code
-    return [balls_collided_already, ball_collision_markers, update_markers]
+    return ( balls_collided_already, ball_collision_markers, update_markers )
 
 # Function that calculates the new velocities of balls that have collided with the wall boundary
 def wall_collision(collided, position, velocity):
@@ -261,12 +294,12 @@ def wall_collision(collided, position, velocity):
         # Rotate them back
         v_x, v_y = [rotated_u_x * np.cos(theta) - rotated_u_y * np.sin(theta),
                     rotated_u_x * np.sin(theta) + rotated_u_y * np.cos(theta) ]
-        
+                
         # Return the new velocity after collision - velocity is stored as a complex number
         return v_x + 1j * v_y
 
 # Function to calculate collisions between balls and the boundary - very similar to the above function
-def calculate_wallphysics(position, velocity, collidedwithwallalready, boundary_collision_markers,xy_bound):
+def calculate_wall_collisions(position, velocity, collidedwithwallalready, boundary_collision_markers,xy_bound):
 
     # This will always be false unless a collision has occurred between the boundary and the baall
     update_wall_markers = False
@@ -306,3 +339,61 @@ def calculate_wallphysics(position, velocity, collidedwithwallalready, boundary_
     
     # Again, due to python not having pointers, we have to return these values - no assignment allowed outside main program
     return [collidedwithwallalready, boundary_collision_markers, update_wall_markers]
+
+
+# Function to calculate kinetic energy of the balls at some time t, given all the required parameters
+# Cannot just use the vertical velocity because it spikes when at the bottom of the funnel
+def calculate_KE(KE, KE_total, GPE, velocity, prior_velocity, collided, position, position_history, friction, t):
+    
+    # The KE for this time instance is based on the KE for the previous time instance - a recurrence
+    # t = 0 is therefore the base case
+    if t > 0:
+        
+        # Physics formula: Calculate the work done against friction
+        # work done = force * distance
+        GPE_diff = GPE[t] - GPE[t-1]
+        distance_travelled = euclidean(position, position_history[t])
+        work_friction = friction * distance_travelled
+        
+        # This is the formula - gain in KE = loss of GPE, minus the work done against friction
+        KE[t][~collided] = ( KE[t-1] - GPE_diff - work_friction )[~collided]
+        
+        # There was a bug where it's possible that only 1 object "collided" in a frame
+        # I don't know if it's still here so I just kept it in
+        if np.any(collided) and collided[collided].size > 1:
+
+            # Calculate the z-velocity magnitude just before the collision in the last frame
+            zvel_mag = np.sqrt(np.maximum(2 * KE[t-1] / m - prior_velocity.real**2 - prior_velocity.imag**2,0)) 
+
+            # ONLY consider the first 2 colliding objects for simplicity - if multiple collisions,
+            # then they'll be handled in the next frame
+            first_2 = np.where(collided)[0][:2]
+            
+            # Refer to the colliding objects as A and B
+            indA, indB = first_2[0], first_2[1]
+            
+            # Initial velocities (u)
+            uz_A, uz_B = zvel_mag[first_2]
+            
+            # Masses
+            m1,m2 = m[first_2]
+            
+            # Calculate the final velocities using conservation of momentum + coeff. of restitution
+            vz_A = ( uz_A * (m1-e*m2) + m2*uz_B*(1+e) ) / (m1 + m2)
+            vz_B = (m1*uz_A + m2*uz_B - m1*vz_A) / m2
+             
+            # Calculate the new kinetic energies
+            ke_objA = kinetic_energy(m[indA] , [velocity[indA].real, velocity[indA].imag, vz_A])
+            ke_objB = kinetic_energy(m[indB] , [velocity[indB].real, velocity[indB].imag, vz_B])
+            
+            # Get the kinetic energies prior to the collision
+            a1,b1 = kinetic_energy(m[indA] , [prior_velocity[indA].real, prior_velocity[indA].imag, zvel_mag[indA]]), kinetic_energy(m[indB] , [prior_velocity[indB].real, prior_velocity[indB].imag, zvel_mag[indB]])
+
+            # There was a bug with kinetic energy being retained at the bottom of the funnel,
+            # we can fix this by taking the minimum of the kinetic energy before and after the collision
+            # This trades a small amount of accuracy for fixing the issue
+            KE[t][indA] = np.minimum(a1,ke_objA) - GPE_diff[indA] - work_friction[indA]
+            KE[t][indB] = np.minimum(b1,ke_objB) - GPE_diff[indB] - work_friction[indB]
+            
+    # The sum of the KE is just the sum of the KEs of the individual balls
+    KE_total[t] = KE[t].sum()

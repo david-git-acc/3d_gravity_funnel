@@ -13,7 +13,7 @@ def ball_marker_update(ball_collision_markers):
         collisions_x, collisions_y = ball_collision_markers.real, ball_collision_markers.imag
             
         # Create the scatter points on the current axis (can't get them as a parameter due to Python addressing issues)
-        return plt.gca().scatter(collisions_x,collisions_y, z(collisions_x, collisions_y),
+        return plt.gcf().get_axes()[0].scatter(collisions_x,collisions_y, z(collisions_x, collisions_y),
                                                  c=point_info["marker colour"][0],
                                                  s=point_info["size"][0],
                                                  marker=point_info["marker"][0],
@@ -25,7 +25,7 @@ def wall_marker_update(boundary_collision_markers):
         collision_x,collision_y = boundary_collision_markers.real, boundary_collision_markers.imag
         
         # Create the scatter points on the current axis (can't get them as a parameter due to Python addressing issues)        
-        return plt.gca().scatter(collision_x,collision_y,z(collision_x,collision_y), 
+        return plt.gcf().get_axes()[0].scatter(collision_x,collision_y,z(collision_x,collision_y), 
                                                  c=point_info["marker colour"][1],
                                                  s=point_info["size"][1],
                                                  marker=point_info["marker"][1], 
@@ -60,3 +60,23 @@ def create_cylinder(X,Y,Z):
 
         # Plot the surface of the cylinder
         ax.plot_surface(x_c, y_c, z_c, color="violet", alpha=0.45)
+        
+def prepare_KE_ax(KE_ax, fps, t):
+    KE_ax.set_xlim([0, t+1])
+    revised_xlabels = np.round( KE_ax.get_xticks() / fps, decimals=2) 
+    KE_ax.set_xticks(KE_ax.get_xticks())
+    KE_ax.set_xticklabels(revised_xlabels)
+    KE_ax.set_title("Ball kinetic energy over time")
+    KE_ax.set_xlabel("Time (s)")
+    KE_ax.set_ylabel("Kinetic energy (J)")
+    KE_ax.set_ylim(0)
+    
+def prepare_energy_ax(total_energy_ax, fps, t):
+    total_energy_ax.set_xlim([0,t+1])
+    revised_xlabels = np.round( total_energy_ax.get_xticks() / fps, decimals=2) 
+    total_energy_ax.set_xticks(total_energy_ax.get_xticks())
+    total_energy_ax.set_xticklabels(revised_xlabels)
+    total_energy_ax.set_title("Total system energy over time")
+    total_energy_ax.set_xlabel("Time (s)")
+    total_energy_ax.set_ylabel("Total energy (J)")
+    total_energy_ax.set_ylim(0)
